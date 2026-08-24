@@ -11,8 +11,9 @@ import { CameraScanner } from '@/components/CameraScanner';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { HistoryLog, ScanItem } from '@/components/HistoryLog';
 import { Lightbulb, CheckCircle, AlertTriangle, ShieldAlert } from 'lucide-react';
+import posthog from 'posthog-js';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 export default function Home() {
   const [nutrients, setNutrients] = useState<NutrientInputs>({
@@ -134,6 +135,9 @@ export default function Home() {
           setProductName(file.name.replace(/\.[^/.]+$/, ""));
           setAdditives(d.detected_additives || []);
           setStatusMsg("✅ Wrapper label OCR parsed successfully!");
+          if (typeof window !== 'undefined' && posthog) {
+            posthog.capture('ocr_scan_success', { fileName: file.name });
+          }
           runCalculation(updated);
         }
       })
@@ -168,6 +172,9 @@ export default function Home() {
           setProductName(resData.product_info?.name || `Barcode ${code}`);
           setAdditives(resData.additives || []);
           setStatusMsg(`✅ Barcode match found: ${resData.product_info?.name}`);
+          if (typeof window !== 'undefined' && posthog) {
+            posthog.capture('barcode_lookup_success', { barcode: code, productName: resData.product_info?.name });
+          }
           addToHistory(resData.product_info?.name, resData.nutri_score.grade, resData.nutri_score.score, n.energy_kcal, n.sugars_g);
         }
       })
@@ -194,6 +201,9 @@ export default function Home() {
     setNutriScore(item.nutri_score);
     setAdditives(item.additives || []);
     setStatusMsg(`Loaded benchmark: ${item.product_name}`);
+    if (typeof window !== 'undefined' && posthog) {
+      posthog.capture('benchmark_selected', { productName: item.product_name, grade: item.nutri_score.grade });
+    }
     addToHistory(item.product_name, item.nutri_score.grade, item.nutri_score.score, n.energy_kcal, n.sugars_g);
   };
 
