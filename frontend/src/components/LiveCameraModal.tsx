@@ -1,0 +1,206 @@
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { Camera, X, RefreshCw, CheckCircle2, Zap, AlertCircle } from 'lucide-react';
+
+interface LiveCameraModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onCapture: (file: File) => void;
+}
+
+export const LiveCameraModal: React.FC<LiveCameraModalProps> = ({
+  isOpen,
+  onClose,
+  onCapture,
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState(false);
+
+  const stopStream = useCallback(() => {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
+    }
+  }, [stream]);
+
+  const startCamera = useCallback(async () => {
+    setIsInitializing(true);
+    setCameraError(null);
+
+    // Stop any existing stream
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+
+    try {
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      };
+
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      setStream(mediaStream);
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+        await videoRef.current.play();
+      }
+    } catch (err: any) {
+      console.error('Camera access error:', err);
+      setCameraError(
+        err.name === 'NotAllowedError'
+          ? 'Camera permission denied. Please allow camera access in your browser settings.'
+          : 'Could not access phone/webcam camera. Please check camera connection.'
+      );
+    } finally {
+      setIsInitializing(false);
+    }
+  }, [facingMode, stream]);
+
+  useEffect(() => {
+    if (isOpen) {
+      startCamera();
+    } else {
+      stopStream();
+    }
+    return () => {
+      stopStream();
+    };
+  }, [isOpen, facingMode]);
+
+  const handleCapture = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = new File([blob], `label_scan_${Date.now()}.png`, {
+          type: 'image/png',
+        });
+        stopStream();
+        onCapture(file);
+        onClose();
+      }
+    }, 'image/png');
+  };
+
+  const toggleCamera = () => {
+    setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
+      <div className="relative w-full max-w-xl bg-slate-900 border border-slate-700/80 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+        {/* Header Bar */}
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
+            <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+              <Camera className="h-4 w-4 text-emerald-400" />
+              <span>Snap Package Ingredients / Table</span>
+            </h3>
+          </div>
+          <button
+            onClick={() => {
+              stopStream();
+              onClose();
+            }}
+            className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Video Viewfinder Container */}
+        <div className="relative bg-black w-full h-[360px] sm:h-[420px] flex items-center justify-center overflow-hidden">
+          {cameraError ? (
+            <div className="p-6 text-center max-w-md">
+              <AlertCircle className="h-12 w-12 text-rose-400 mx-auto mb-3" />
+              <p className="text-sm text-slate-200 font-semibold mb-2">{cameraError}</p>
+              <p className="text-xs text-slate-400 mb-4">
+                You can still upload a photo of the nutrition label directly from your gallery.
+              </p>
+              <button
+                onClick={startCamera}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700"
+              >
+                Retry Camera
+              </button>
+            </div>
+          ) : (
+            <>
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+
+              {/* Viewfinder Target Bounding Frame */}
+              <div className="absolute inset-0 pointer-events-none border-[3px] border-emerald-500/40 rounded-2xl m-6 sm:m-8 flex flex-col justify-between p-4 shadow-[0_0_30px_rgba(16,185,129,0.15)]">
+                {/* Target Corners */}
+                <div className="flex justify-between">
+                  <div className="w-6 h-6 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg" />
+                  <div className="w-6 h-6 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg" />
+                </div>
+                {/* Center Scanning Line Animation */}
+                <div className="relative w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-pulse" />
+                <div className="flex justify-between">
+                  <div className="w-6 h-6 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg" />
+                  <div className="w-6 h-6 border-b-4 border-r-4 border-emerald-400 rounded-br-lg" />
+                </div>
+              </div>
+
+              {/* Overlay Prompt */}
+              <div className="absolute top-10 left-1/2 -translate-x-1/2 bg-slate-950/80 backdrop-blur-md px-4 py-1.5 rounded-full border border-slate-700/60 text-[11px] font-medium text-emerald-300 tracking-wide pointer-events-none">
+                Align FSSAI Nutrition Table inside frame
+              </div>
+            </>
+          )}
+
+          <canvas ref={canvasRef} className="hidden" />
+        </div>
+
+        {/* Action Controls Footer */}
+        <div className="p-5 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between gap-4">
+          <button
+            onClick={toggleCamera}
+            disabled={!!cameraError}
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className="h-4 w-4" />
+            <span className="hidden sm:inline">Flip Camera</span>
+          </button>
+
+          <button
+            onClick={handleCapture}
+            disabled={!!cameraError || isInitializing}
+            className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm rounded-xl shadow-lg shadow-emerald-950/60 transition-all transform active:scale-95 disabled:opacity-50"
+          >
+            <Zap className="h-5 w-5 fill-current" />
+            <span>CAPTURE & SCAN LABEL</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
