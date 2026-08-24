@@ -6,7 +6,7 @@ interface NutriScoreBadgeProps {
   score: number;
   colorHex: string;
   colorName: string;
-  summaryMsg: str;
+  summaryMsg: string;
   proteinCapped?: boolean;
 }
 

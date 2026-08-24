@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Barcode, Search, Zap } from 'lucide-react';
 
 interface BarcodeScannerProps {
-  onBarcodeLookup: (code: str) => void;
+  onBarcodeLookup: (code: string) => void;
   onSelectBenchmark: (benchmark: any) => void;
   benchmarks: any[];
   isLoading: boolean;
