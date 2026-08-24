@@ -14,6 +14,10 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
         api_host: host,
         person_profiles: 'always',
         capture_pageview: true,
+        capture_pageleave: true,
+        loaded: (ph) => {
+          ph.capture('$pageview');
+        }
       });
     }
   }, []);
