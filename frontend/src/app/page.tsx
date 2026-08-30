@@ -6,14 +6,43 @@ import { NutriScoreBadge } from '@/components/NutriScoreBadge';
 import { VerdictReportCard } from '@/components/VerdictReportCard';
 import { BreakdownCard } from '@/components/BreakdownCard';
 import { AdditiveTags } from '@/components/AdditiveTags';
-import { VerificationForm, NutrientInputs } from '@/components/VerificationForm';
+import { VerificationForm } from '@/components/VerificationForm';
 import { CameraScanner } from '@/components/CameraScanner';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { HistoryLog, ScanItem } from '@/components/HistoryLog';
 import { Lightbulb, CheckCircle, AlertTriangle, Info } from 'lucide-react';
 import posthog from 'posthog-js';
+import { processChocolateImage } from '@/utils/ocrService';
+import { calculateNutriScore, NutrientInputs, NutriScoreResult } from '@/utils/nutriScoreService';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
+const DEFAULT_BENCHMARKS = [
+  {
+    product_name: "Amul Dark Chocolate (75% Cocoa)",
+    nutrients: { energy_kcal: 540, sugars_g: 26, sat_fat_g: 22, sodium_mg: 15, fiber_g: 8, protein_g: 8.5, fvl_cocoa_percent: 75 },
+    nutri_score: calculateNutriScore({ energy_kcal: 540, sugars_g: 26, sat_fat_g: 22, sodium_mg: 15, fiber_g: 8, protein_g: 8.5, fvl_cocoa_percent: 75 }),
+    additives: [{ name: "INS 322 (Soy Lecithin)", description: "Permitted Emulsifier" }]
+  },
+  {
+    product_name: "Cadbury Dairy Milk Chocolate",
+    nutrients: { energy_kcal: 530, sugars_g: 57, sat_fat_g: 18, sodium_mg: 150, fiber_g: 1.5, protein_g: 7.5, fvl_cocoa_percent: 15 },
+    nutri_score: calculateNutriScore({ energy_kcal: 530, sugars_g: 57, sat_fat_g: 18, sodium_mg: 150, fiber_g: 1.5, protein_g: 7.5, fvl_cocoa_percent: 15 }),
+    additives: [{ name: "INS 322 (Soy Lecithin)", description: "Emulsifier" }, { name: "INS 476 (PGPR)", description: "Emulsifier used to cut cocoa butter costs" }]
+  },
+  {
+    product_name: "Nestle Munch Chocolate Wafer",
+    nutrients: { energy_kcal: 480, sugars_g: 45, sat_fat_g: 16, sodium_mg: 110, fiber_g: 1.0, protein_g: 5.0, fvl_cocoa_percent: 5.0 },
+    nutri_score: calculateNutriScore({ energy_kcal: 480, sugars_g: 45, sat_fat_g: 16, sodium_mg: 110, fiber_g: 1.0, protein_g: 5.0, fvl_cocoa_percent: 5.0 }),
+    additives: [{ name: "INS 322 (Soy Lecithin)", description: "Emulsifier" }]
+  },
+  {
+    product_name: "Cadbury Bournville Dark Chocolate (50% Cocoa)",
+    nutrients: { energy_kcal: 535, sugars_g: 48, sat_fat_g: 19.5, sodium_mg: 20, fiber_g: 6.5, protein_g: 5.5, fvl_cocoa_percent: 50.0 },
+    nutri_score: calculateNutriScore({ energy_kcal: 535, sugars_g: 48, sat_fat_g: 19.5, sodium_mg: 20, fiber_g: 6.5, protein_g: 5.5, fvl_cocoa_percent: 50.0 }),
+    additives: [{ name: "INS 322 (Soy Lecithin)", description: "Emulsifier" }, { name: "INS 476 (PGPR)", description: "Emulsifier" }]
+  }
+];
 
 export default function Home() {
   const [nutrients, setNutrients] = useState<NutrientInputs>({
@@ -27,82 +56,46 @@ export default function Home() {
     fvl_cocoa_percent: 75.0,
   });
 
-  const [nutriScore, setNutriScore] = useState<any>({
-    grade: 'D',
-    score: 16,
-    color_hex: '#ee8100',
-    color_name: 'Orange',
-    negative_points: { energy: 6, sugars: 7, sat_fat: 10, sodium: 0, total: 23 },
-    positive_points: { fvl: 2, fiber: 5, protein: 5, effective_protein: 0, total: 7 },
-    protein_capped: true,
-    summary_msg: 'Moderate/Poor nutritional quality - Consume in moderation',
-    recommendations: [
-      "High Saturated Fat: Check ingredients for Palm Oil or Vanaspati. Prefer snacks made with groundnut oil or cold-pressed oils."
-    ]
-  });
+  const [nutriScore, setNutriScore] = useState<NutriScoreResult>(() =>
+    calculateNutriScore({
+      energy_kcal: 540.0,
+      sugars_g: 26.0,
+      added_sugars_g: 20.0,
+      sat_fat_g: 22.0,
+      sodium_mg: 15.0,
+      fiber_g: 8.0,
+      protein_g: 8.5,
+      fvl_cocoa_percent: 75.0,
+    })
+  );
 
   const [productName, setProductName] = useState('Amul Dark Chocolate (75% Cocoa)');
   const [additives, setAdditives] = useState<any[]>([]);
-  const [benchmarks, setBenchmarks] = useState<any[]>([]);
+  const [benchmarks, setBenchmarks] = useState<any[]>(DEFAULT_BENCHMARKS);
   const [history, setHistory] = useState<ScanItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [statusType, setStatusType] = useState<'success' | 'error' | 'info' | null>(null);
 
-  // Load benchmark chocolates from backend API on mount
+  // Load benchmark chocolates
   useEffect(() => {
     fetch(`${API_BASE}/api/benchmarks`)
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           setBenchmarks(data);
         }
       })
       .catch(() => {
-        // Fallback offline mock benchmarks (strictly chocolates only)
-        setBenchmarks([
-          {
-            product_name: "Amul Dark Chocolate (75% Cocoa)",
-            nutrients: { energy_kcal: 540, sugars_g: 26, sat_fat_g: 22, sodium_mg: 15, fiber_g: 8, protein_g: 8.5, fvl_cocoa_percent: 75 },
-            nutri_score: { grade: 'D', score: 16, color_hex: '#ee8100', color_name: 'Orange', negative_points: { energy: 6, sugars: 7, sat_fat: 10, sodium: 0, total: 23 }, positive_points: { fvl: 2, fiber: 5, protein: 5, effective_protein: 0, total: 7 }, protein_capped: true, summary_msg: 'Consume in moderation', recommendations: [] },
-            additives: []
-          },
-          {
-            product_name: "Cadbury Dairy Milk Chocolate",
-            nutrients: { energy_kcal: 530, sugars_g: 57, sat_fat_g: 18, sodium_mg: 150, fiber_g: 1.5, protein_g: 7.5, fvl_cocoa_percent: 15 },
-            nutri_score: { grade: 'E', score: 32, color_hex: '#e63e11', color_name: 'Dark Red', negative_points: { energy: 6, sugars: 15, sat_fat: 10, sodium: 1, total: 32 }, positive_points: { fvl: 0, fiber: 0, protein: 4, effective_protein: 0, total: 0 }, protein_capped: true, summary_msg: 'Very high sugar & saturated fat', recommendations: ["High Sugar Penalty: 57g sugar per 100g."] },
-            additives: [{ name: "INS 322 (Soy Lecithin)", description: "Emulsifier" }, { name: "INS 476 (PGPR)", description: "Emulsifier used to cut cocoa butter costs" }]
-          },
-          {
-            product_name: "Nestle Munch Chocolate Wafer",
-            nutrients: { energy_kcal: 480, sugars_g: 45, sat_fat_g: 16, sodium_mg: 110, fiber_g: 1.0, protein_g: 5.0, fvl_cocoa_percent: 5.0 },
-            nutri_score: { grade: 'E', score: 26, color_hex: '#e63e11', color_name: 'Dark Red', negative_points: { energy: 5, sugars: 12, sat_fat: 9, sodium: 0, total: 26 }, positive_points: { fvl: 0, fiber: 0, protein: 3, effective_protein: 0, total: 0 }, protein_capped: true, summary_msg: 'High sugar & saturated fat', recommendations: [] },
-            additives: [{ name: "INS 322 (Soy Lecithin)", description: "Emulsifier" }]
-          },
-          {
-            product_name: "Cadbury Bournville Dark Chocolate (50% Cocoa)",
-            nutrients: { energy_kcal: 535, sugars_g: 48, sat_fat_g: 19.5, sodium_mg: 20, fiber_g: 6.5, protein_g: 5.5, fvl_cocoa_percent: 50.0 },
-            nutri_score: { grade: 'D', score: 20, color_hex: '#ee8100', color_name: 'Orange', negative_points: { energy: 6, sugars: 13, sat_fat: 10, sodium: 0, total: 29 }, positive_points: { fvl: 2, fiber: 4, protein: 3, effective_protein: 0, total: 9 }, protein_capped: true, summary_msg: 'Consume in moderation', recommendations: [] },
-            additives: [{ name: "INS 322 (Soy Lecithin)", description: "Emulsifier" }, { name: "INS 476 (PGPR)", description: "Emulsifier" }]
-          }
-        ]);
+        // Fallback to embedded chocolate benchmarks
+        setBenchmarks(DEFAULT_BENCHMARKS);
       });
   }, []);
 
   const runCalculation = (currentNutrients: NutrientInputs, nameToSave?: string) => {
-    fetch(`${API_BASE}/api/calculate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(currentNutrients),
-    })
-      .then((res) => res.json())
-      .then((result) => {
-        setNutriScore(result);
-        addToHistory(nameToSave || productName, result.grade, result.score, currentNutrients.energy_kcal, currentNutrients.sugars_g);
-      })
-      .catch((err) => {
-        console.error("Calculation error:", err);
-      });
+    const result = calculateNutriScore(currentNutrients);
+    setNutriScore(result);
+    addToHistory(nameToSave || productName, result.grade, result.score, currentNutrients.energy_kcal, currentNutrients.sugars_g);
   };
 
   const addToHistory = (name: string, grade: string, score: number, energy: number, sugar: number) => {
@@ -118,57 +111,43 @@ export default function Home() {
     setHistory((prev) => [newItem, ...prev.slice(0, 9)]);
   };
 
-  const handleImageUpload = (file: File) => {
+  const handleImageUpload = async (file: File) => {
     setIsLoading(true);
     setStatusType('info');
-    setStatusMsg("Preprocessing OpenCV wrapper image & PyTesseract FSSAI OCR...");
+    setStatusMsg("Scanning chocolate label with high-accuracy OCR engine...");
 
-    const formData = new FormData();
-    formData.append("file", file);
-
-    fetch(`${API_BASE}/api/ocr`, {
-      method: 'POST',
-      body: formData,
-    })
-      .then((res) => res.json())
-      .then((resData) => {
-        setIsLoading(false);
-        if (resData.success && resData.data) {
-          const d = resData.data;
-          const updated: NutrientInputs = {
-            energy_kcal: d.energy_kcal || 0,
-            sugars_g: d.sugars_g || 0,
-            added_sugars_g: d.added_sugars_g || 0,
-            sat_fat_g: d.sat_fat_g || 0,
-            sodium_mg: d.sodium_mg || 0,
-            fiber_g: d.fiber_g || 0,
-            protein_g: d.protein_g || 0,
-            fvl_cocoa_percent: d.fvl_cocoa_percent || 0,
-          };
-          const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ");
-          setNutrients(updated);
-          setProductName(cleanName);
-          setAdditives(d.detected_additives || []);
-          setStatusType('success');
-          setStatusMsg(resData.message || "✅ Chocolate wrapper label parsed successfully!");
-          if (typeof window !== 'undefined' && posthog) {
-            posthog.capture('ocr_scan_success', { fileName: file.name });
-          }
-          runCalculation(updated, cleanName);
-        } else {
-          // Reject invalid / random / non-chocolate images
-          setStatusType('error');
-          setStatusMsg(
-            resData.message ||
-            "⚠️ Invalid picture: Please give me a proper pic of a chocolate wrapper or nutrition facts table. NutriScan AI is strictly restricted to chocolates."
-          );
-        }
-      })
-      .catch(() => {
-        setIsLoading(false);
-        setStatusType('error');
-        setStatusMsg("⚠️ Could not connect to backend OCR server. Please check your connection.");
+    try {
+      // In-browser client-side OCR for guaranteed reliability on phone / Vercel
+      const parsed = await processChocolateImage(file, (_progress, status) => {
+        setStatusMsg(status);
       });
+
+      setIsLoading(false);
+
+      if (parsed.isValidChocolate) {
+        setNutrients(parsed.nutrients);
+        setProductName(parsed.productName);
+        setAdditives(parsed.additives);
+        setStatusType('success');
+        setStatusMsg(`✅ ${parsed.productName} label OCR parsed successfully!`);
+
+        if (typeof window !== 'undefined' && posthog) {
+          posthog.capture('ocr_scan_success', { productName: parsed.productName });
+        }
+
+        runCalculation(parsed.nutrients, parsed.productName);
+      } else {
+        setStatusType('error');
+        setStatusMsg(
+          parsed.errorMessage ||
+          "⚠️ Please provide a proper picture of a chocolate wrapper or its nutrition facts table. NutriScan AI is strictly restricted to chocolates."
+        );
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      setStatusType('error');
+      setStatusMsg("⚠️ Could not process image. Please try holding the chocolate wrapper steady with good lighting.");
+    }
   };
 
   const handleBarcodeLookup = (code: string) => {
@@ -200,7 +179,7 @@ export default function Home() {
           };
           const name = resData.product_info?.name || `Barcode ${code}`;
           setNutrients(updated);
-          setNutriScore(resData.nutri_score);
+          setNutriScore(resData.nutri_score || calculateNutriScore(updated));
           setProductName(name);
           setAdditives(resData.additives || []);
           setStatusType('success');
@@ -208,7 +187,7 @@ export default function Home() {
           if (typeof window !== 'undefined' && posthog) {
             posthog.capture('barcode_lookup_success', { barcode: code, productName: name });
           }
-          addToHistory(name, resData.nutri_score.grade, resData.nutri_score.score, n.energy_kcal, n.sugars_g);
+          addToHistory(name, resData.nutri_score?.grade || 'D', resData.nutri_score?.score || 16, n.energy_kcal, n.sugars_g);
         }
       })
       .catch((err: any) => {
@@ -232,14 +211,15 @@ export default function Home() {
       fvl_cocoa_percent: n.fvl_cocoa_percent,
     };
     setNutrients(updated);
-    setNutriScore(item.nutri_score);
+    const score = item.nutri_score || calculateNutriScore(updated);
+    setNutriScore(score);
     setAdditives(item.additives || []);
     setStatusType('success');
     setStatusMsg(`Loaded benchmark chocolate: ${item.product_name}`);
     if (typeof window !== 'undefined' && posthog) {
-      posthog.capture('benchmark_selected', { productName: item.product_name, grade: item.nutri_score.grade });
+      posthog.capture('benchmark_selected', { productName: item.product_name, grade: score.grade });
     }
-    addToHistory(item.product_name, item.nutri_score.grade, item.nutri_score.score, n.energy_kcal, n.sugars_g);
+    addToHistory(item.product_name, score.grade, score.score, n.energy_kcal, n.sugars_g);
   };
 
   return (
