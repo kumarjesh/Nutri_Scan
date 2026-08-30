@@ -100,7 +100,7 @@ export const LiveCameraModal: React.FC<LiveCameraModalProps> = ({
 
     canvas.toBlob((blob) => {
       if (blob) {
-        const file = new File([blob], `label_scan_${Date.now()}.png`, {
+        const file = new File([blob], `chocolate_label_${Date.now()}.png`, {
           type: 'image/png',
         });
         stopStream();
@@ -125,7 +125,7 @@ export const LiveCameraModal: React.FC<LiveCameraModalProps> = ({
             <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <h3 className="text-xs sm:text-sm font-bold text-white tracking-wide flex items-center gap-2">
               <Camera className="h-4 w-4 text-emerald-400" />
-              <span>Snap Nutrition Label</span>
+              <span>Snap Chocolate Nutrition Label</span>
             </h3>
           </div>
           <button
@@ -146,7 +146,7 @@ export const LiveCameraModal: React.FC<LiveCameraModalProps> = ({
               <AlertCircle className="h-10 w-10 text-rose-400 mx-auto mb-3" />
               <p className="text-sm text-slate-200 font-semibold mb-2">{cameraError}</p>
               <p className="text-xs text-slate-400 mb-4">
-                You can still upload a photo of the nutrition label directly from your gallery.
+                You can still upload a photo of the chocolate nutrition label directly from your gallery.
               </p>
               <button
                 onClick={startCamera}
@@ -182,7 +182,7 @@ export const LiveCameraModal: React.FC<LiveCameraModalProps> = ({
 
               {/* Overlay Prompt */}
               <div className="absolute top-4 sm:top-6 left-1/2 -translate-x-1/2 bg-slate-950/85 backdrop-blur-md px-3 sm:px-4 py-1.5 rounded-full border border-slate-700/60 text-[10px] sm:text-[11px] font-medium text-emerald-300 tracking-wide pointer-events-none whitespace-nowrap shadow-lg">
-                Align FSSAI Nutrition Table inside frame
+                Align Chocolate Nutrition Table inside frame
               </div>
             </>
           )}
@@ -207,7 +207,7 @@ export const LiveCameraModal: React.FC<LiveCameraModalProps> = ({
             className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-950/60 transition-all transform active:scale-95 disabled:opacity-50"
           >
             <Zap className="h-4 w-4 sm:h-5 sm:w-5 fill-current" />
-            <span>CAPTURE & SCAN LABEL</span>
+            <span>CAPTURE & SCAN CHOCOLATE LABEL</span>
           </button>
         </div>
       </div>

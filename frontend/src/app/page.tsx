@@ -10,7 +10,7 @@ import { VerificationForm, NutrientInputs } from '@/components/VerificationForm'
 import { CameraScanner } from '@/components/CameraScanner';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { HistoryLog, ScanItem } from '@/components/HistoryLog';
-import { Lightbulb, CheckCircle, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Lightbulb, CheckCircle, AlertTriangle, Info } from 'lucide-react';
 import posthog from 'posthog-js';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -47,8 +47,9 @@ export default function Home() {
   const [history, setHistory] = useState<ScanItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [statusType, setStatusType] = useState<'success' | 'error' | 'info' | null>(null);
 
-  // Load benchmarks from backend API on mount
+  // Load benchmark chocolates from backend API on mount
   useEffect(() => {
     fetch(`${API_BASE}/api/benchmarks`)
       .then((res) => res.json())
@@ -58,7 +59,7 @@ export default function Home() {
         }
       })
       .catch(() => {
-        // Fallback offline mock benchmarks
+        // Fallback offline mock benchmarks (strictly chocolates only)
         setBenchmarks([
           {
             product_name: "Amul Dark Chocolate (75% Cocoa)",
@@ -71,12 +72,24 @@ export default function Home() {
             nutrients: { energy_kcal: 530, sugars_g: 57, sat_fat_g: 18, sodium_mg: 150, fiber_g: 1.5, protein_g: 7.5, fvl_cocoa_percent: 15 },
             nutri_score: { grade: 'E', score: 32, color_hex: '#e63e11', color_name: 'Dark Red', negative_points: { energy: 6, sugars: 15, sat_fat: 10, sodium: 1, total: 32 }, positive_points: { fvl: 0, fiber: 0, protein: 4, effective_protein: 0, total: 0 }, protein_capped: true, summary_msg: 'Very high sugar & saturated fat', recommendations: ["High Sugar Penalty: 57g sugar per 100g."] },
             additives: [{ name: "INS 322 (Soy Lecithin)", description: "Emulsifier" }, { name: "INS 476 (PGPR)", description: "Emulsifier used to cut cocoa butter costs" }]
+          },
+          {
+            product_name: "Nestle Munch Chocolate Wafer",
+            nutrients: { energy_kcal: 480, sugars_g: 45, sat_fat_g: 16, sodium_mg: 110, fiber_g: 1.0, protein_g: 5.0, fvl_cocoa_percent: 5.0 },
+            nutri_score: { grade: 'E', score: 26, color_hex: '#e63e11', color_name: 'Dark Red', negative_points: { energy: 5, sugars: 12, sat_fat: 9, sodium: 0, total: 26 }, positive_points: { fvl: 0, fiber: 0, protein: 3, effective_protein: 0, total: 0 }, protein_capped: true, summary_msg: 'High sugar & saturated fat', recommendations: [] },
+            additives: [{ name: "INS 322 (Soy Lecithin)", description: "Emulsifier" }]
+          },
+          {
+            product_name: "Cadbury Bournville Dark Chocolate (50% Cocoa)",
+            nutrients: { energy_kcal: 535, sugars_g: 48, sat_fat_g: 19.5, sodium_mg: 20, fiber_g: 6.5, protein_g: 5.5, fvl_cocoa_percent: 50.0 },
+            nutri_score: { grade: 'D', score: 20, color_hex: '#ee8100', color_name: 'Orange', negative_points: { energy: 6, sugars: 13, sat_fat: 10, sodium: 0, total: 29 }, positive_points: { fvl: 2, fiber: 4, protein: 3, effective_protein: 0, total: 9 }, protein_capped: true, summary_msg: 'Consume in moderation', recommendations: [] },
+            additives: [{ name: "INS 322 (Soy Lecithin)", description: "Emulsifier" }, { name: "INS 476 (PGPR)", description: "Emulsifier" }]
           }
         ]);
       });
   }, []);
 
-  const runCalculation = (currentNutrients: NutrientInputs) => {
+  const runCalculation = (currentNutrients: NutrientInputs, nameToSave?: string) => {
     fetch(`${API_BASE}/api/calculate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -85,7 +98,7 @@ export default function Home() {
       .then((res) => res.json())
       .then((result) => {
         setNutriScore(result);
-        addToHistory(productName, result.grade, result.score, currentNutrients.energy_kcal, currentNutrients.sugars_g);
+        addToHistory(nameToSave || productName, result.grade, result.score, currentNutrients.energy_kcal, currentNutrients.sugars_g);
       })
       .catch((err) => {
         console.error("Calculation error:", err);
@@ -107,6 +120,7 @@ export default function Home() {
 
   const handleImageUpload = (file: File) => {
     setIsLoading(true);
+    setStatusType('info');
     setStatusMsg("Preprocessing OpenCV wrapper image & PyTesseract FSSAI OCR...");
 
     const formData = new FormData();
@@ -122,37 +136,54 @@ export default function Home() {
         if (resData.success && resData.data) {
           const d = resData.data;
           const updated: NutrientInputs = {
-            energy_kcal: d.energy_kcal || 500,
-            sugars_g: d.sugars_g || 20,
-            added_sugars_g: d.added_sugars_g || 15,
-            sat_fat_g: d.sat_fat_g || 10,
-            sodium_mg: d.sodium_mg || 50,
-            fiber_g: d.fiber_g || 2,
-            protein_g: d.protein_g || 5,
+            energy_kcal: d.energy_kcal || 0,
+            sugars_g: d.sugars_g || 0,
+            added_sugars_g: d.added_sugars_g || 0,
+            sat_fat_g: d.sat_fat_g || 0,
+            sodium_mg: d.sodium_mg || 0,
+            fiber_g: d.fiber_g || 0,
+            protein_g: d.protein_g || 0,
             fvl_cocoa_percent: d.fvl_cocoa_percent || 0,
           };
+          const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ");
           setNutrients(updated);
-          setProductName(file.name.replace(/\.[^/.]+$/, ""));
+          setProductName(cleanName);
           setAdditives(d.detected_additives || []);
-          setStatusMsg("✅ Wrapper label OCR parsed successfully!");
+          setStatusType('success');
+          setStatusMsg(resData.message || "✅ Chocolate wrapper label parsed successfully!");
           if (typeof window !== 'undefined' && posthog) {
             posthog.capture('ocr_scan_success', { fileName: file.name });
           }
-          runCalculation(updated);
+          runCalculation(updated, cleanName);
+        } else {
+          // Reject invalid / random / non-chocolate images
+          setStatusType('error');
+          setStatusMsg(
+            resData.message ||
+            "⚠️ Invalid picture: Please give me a proper pic of a chocolate wrapper or nutrition facts table. NutriScan AI is strictly restricted to chocolates."
+          );
         }
       })
       .catch(() => {
         setIsLoading(false);
-        setStatusMsg("⚠️ Could not connect to backend OCR server. Using manual input.");
+        setStatusType('error');
+        setStatusMsg("⚠️ Could not connect to backend OCR server. Please check your connection.");
       });
   };
 
   const handleBarcodeLookup = (code: string) => {
     setIsLoading(true);
+    setStatusType('info');
     setStatusMsg(`Looking up barcode ${code}...`);
 
     fetch(`${API_BASE}/api/barcode/${code}`)
-      .then((res) => res.json())
+      .then(async (res) => {
+        const resData = await res.json();
+        if (!res.ok) {
+          throw new Error(resData.detail || `Barcode ${code} not found or not a chocolate item.`);
+        }
+        return resData;
+      })
       .then((resData) => {
         setIsLoading(false);
         if (resData.nutrients) {
@@ -167,20 +198,23 @@ export default function Home() {
             protein_g: n.protein_g,
             fvl_cocoa_percent: n.fvl_cocoa_percent,
           };
+          const name = resData.product_info?.name || `Barcode ${code}`;
           setNutrients(updated);
           setNutriScore(resData.nutri_score);
-          setProductName(resData.product_info?.name || `Barcode ${code}`);
+          setProductName(name);
           setAdditives(resData.additives || []);
-          setStatusMsg(`✅ Barcode match found: ${resData.product_info?.name}`);
+          setStatusType('success');
+          setStatusMsg(`✅ Chocolate match found: ${name}`);
           if (typeof window !== 'undefined' && posthog) {
-            posthog.capture('barcode_lookup_success', { barcode: code, productName: resData.product_info?.name });
+            posthog.capture('barcode_lookup_success', { barcode: code, productName: name });
           }
-          addToHistory(resData.product_info?.name, resData.nutri_score.grade, resData.nutri_score.score, n.energy_kcal, n.sugars_g);
+          addToHistory(name, resData.nutri_score.grade, resData.nutri_score.score, n.energy_kcal, n.sugars_g);
         }
       })
-      .catch(() => {
+      .catch((err: any) => {
         setIsLoading(false);
-        setStatusMsg(`⚠️ Barcode ${code} not found in database.`);
+        setStatusType('error');
+        setStatusMsg(`⚠️ ${err.message || `Barcode ${code} not found or not a chocolate item.`}`);
       });
   };
 
@@ -200,7 +234,8 @@ export default function Home() {
     setNutrients(updated);
     setNutriScore(item.nutri_score);
     setAdditives(item.additives || []);
-    setStatusMsg(`Loaded benchmark: ${item.product_name}`);
+    setStatusType('success');
+    setStatusMsg(`Loaded benchmark chocolate: ${item.product_name}`);
     if (typeof window !== 'undefined' && posthog) {
       posthog.capture('benchmark_selected', { productName: item.product_name, grade: item.nutri_score.grade });
     }
@@ -212,11 +247,32 @@ export default function Home() {
       <Header />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-8 space-y-8">
-        {/* Status Notification Banner */}
+        {/* Prominent Status Notification Banner */}
         {statusMsg && (
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-semibold text-cyan-300 flex items-center justify-between shadow-lg">
-            <span>{statusMsg}</span>
-            <button onClick={() => setStatusMsg(null)} className="text-slate-400 hover:text-white">✕</button>
+          <div
+            className={`p-4 rounded-2xl border text-xs sm:text-sm font-semibold flex items-center justify-between shadow-xl transition-all animate-in fade-in duration-200 ${
+              statusType === 'error'
+                ? 'bg-rose-950/80 border-rose-600/60 text-rose-200 shadow-rose-950/40'
+                : statusType === 'success'
+                ? 'bg-emerald-950/80 border-emerald-600/60 text-emerald-200 shadow-emerald-950/40'
+                : 'bg-slate-900/90 border-cyan-600/50 text-cyan-200 shadow-cyan-950/40'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              {statusType === 'error' && <AlertTriangle className="h-5 w-5 text-rose-400 shrink-0" />}
+              {statusType === 'success' && <CheckCircle className="h-5 w-5 text-emerald-400 shrink-0" />}
+              {statusType === 'info' && <Info className="h-5 w-5 text-cyan-400 shrink-0" />}
+              <span>{statusMsg}</span>
+            </div>
+            <button
+              onClick={() => {
+                setStatusMsg(null);
+                setStatusType(null);
+              }}
+              className="ml-3 p-1 text-slate-400 hover:text-white rounded-lg transition-colors"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -234,7 +290,7 @@ export default function Home() {
         {/* Product Scanned Header Title */}
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
-            <span>Product Analysis:</span>
+            <span>Chocolate Analysis:</span>
             <span className="text-emerald-400 underline decoration-emerald-500/50 underline-offset-4">
               {productName}
             </span>
@@ -279,7 +335,7 @@ export default function Home() {
           <div className="glass-card rounded-2xl p-5 border border-cyan-900/30 bg-cyan-950/10">
             <div className="flex items-center gap-2 mb-3 text-cyan-400 font-bold text-sm">
               <Lightbulb className="h-4 w-4" />
-              <span>Healthier Indian Alternatives & Guidance Radar</span>
+              <span>Healthier Indian Chocolate Alternatives & Guidance Radar</span>
             </div>
             <ul className="space-y-2">
               {nutriScore.recommendations.map((rec: string, idx: number) => (
@@ -311,9 +367,9 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800 py-6 text-center text-xs text-slate-500">
-        <p>NutriScan AI &bull; Smart Front-of-Pack Nutrition Grade Calculator (India Edition)</p>
+        <p>NutriScan AI &bull; Smart Front-of-Pack Chocolate Nutrition Grade Calculator</p>
         <p className="mt-1 text-[11px] text-slate-600">
-          Algorithm: Updated 2023/2024 European General Solid Foods Standard & FSSAI Indian Label Parser.
+          Algorithm: Updated 2023/2024 European Nutri-Score & FSSAI Chocolate Label Parser.
         </p>
       </footer>
     </div>

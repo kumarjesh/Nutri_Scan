@@ -27,13 +27,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     <div className="glass-card rounded-2xl p-6 border border-slate-800">
       <div className="flex items-center gap-2 mb-3 text-slate-200 font-bold text-sm">
         <Barcode className="h-4 w-4 text-cyan-400" />
-        <span>Barcode Search & Indian Benchmark Selector</span>
+        <span>Barcode Search & Indian Chocolate Benchmarks</span>
       </div>
 
       <form onSubmit={handleSubmit} className="flex gap-2 mb-5">
         <input
           type="text"
-          placeholder="Enter food barcode (e.g. 8901058852309)"
+          placeholder="Enter chocolate barcode (e.g. 8901058852309)"
           value={barcodeInput}
           onChange={(e) => setBarcodeInput(e.target.value)}
           className="flex-1 glass-input px-3.5 py-2 rounded-xl text-xs font-mono"
@@ -52,7 +52,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       <div>
         <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
           <Zap className="h-3 w-3 text-amber-400" />
-          <span>Instant Indian Food Benchmarks:</span>
+          <span>Instant Indian Chocolate Benchmarks:</span>
         </div>
         <div className="flex flex-wrap gap-2">
           {benchmarks.map((item, idx) => (

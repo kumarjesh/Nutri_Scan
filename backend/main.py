@@ -1,5 +1,5 @@
 """
-FastAPI Server Entry Point for NutriScan AI Backend API.
+FastAPI Server Entry Point for NutriScan AI Backend API (Exclusively Chocolates Edition).
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -13,15 +13,15 @@ from barcode_service import BarcodeService
 
 
 app = FastAPI(
-    title="NutriScan AI API (India Market Edition)",
-    description="Smart Front-of-Pack Nutrition Grade & Nutri-Score Calculator API",
-    version="1.0.0"
+    title="NutriScan AI API (Chocolates Edition)",
+    description="Smart Front-of-Pack Nutrition Grade & Nutri-Score Calculator API exclusively for Chocolate & Cocoa Confectionery",
+    version="1.1.0"
 )
 
 # Enable CORS for Next.js Frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows Next.js local dev server (http://localhost:3000)
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,14 +64,14 @@ class FullScanResponse(BaseModel):
 def health_check():
     return {
         "status": "online",
-        "service": "NutriScan AI API (India Market Edition)",
-        "version": "1.0.0"
+        "service": "NutriScan AI API (Chocolates Edition)",
+        "version": "1.1.0"
     }
 
 
 @app.post("/api/ocr", response_model=OCRResponse)
 async def process_ocr_image(file: UploadFile = File(...)):
-    """Upload packaging label image, preprocess with OpenCV, run PyTesseract OCR, and parse FSSAI label."""
+    """Upload packaging label image, preprocess with OpenCV, run PyTesseract OCR, and parse chocolate label."""
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Uploaded file must be a valid JPG/PNG image.")
 
@@ -80,10 +80,17 @@ async def process_ocr_image(file: UploadFile = File(...)):
         extracted_text = ocr_engine.extract_text_from_bytes(contents)
         parsed_nutrients = ocr_engine.parse_fssai_text(extracted_text)
 
+        if not parsed_nutrients.is_valid_chocolate_label:
+            return OCRResponse(
+                success=False,
+                data=parsed_nutrients,
+                message=parsed_nutrients.validation_error or "⚠️ Please provide a proper picture of a chocolate wrapper or nutrition facts table."
+            )
+
         return OCRResponse(
             success=True,
             data=parsed_nutrients,
-            message="FSSAI label successfully extracted and normalized."
+            message="✅ Chocolate wrapper nutrition table parsed successfully!"
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process image: {str(e)}")
@@ -113,7 +120,13 @@ def get_product_by_barcode(barcode_number: str):
     """Lookup product nutritional specs by barcode and calculate Nutri-Score."""
     product = BarcodeService.lookup_barcode(barcode_number)
     if not product:
-        raise HTTPException(status_code=444, detail=f"Barcode '{barcode_number}' not found in database.")
+        raise HTTPException(status_code=404, detail=f"Barcode '{barcode_number}' not found in database.")
+
+    if not product.get("is_chocolate", True):
+        raise HTTPException(
+            status_code=422,
+            detail=product.get("error", f"Product '{product.get('product_name')}' is not a chocolate item. NutriScan AI is strictly restricted to chocolates.")
+        )
 
     data = NutrientData(
         energy_kcal=product["energy_kcal"],
@@ -151,7 +164,7 @@ def get_product_by_barcode(barcode_number: str):
 
 @app.get("/api/benchmarks")
 def get_indian_benchmarks():
-    """Return pre-configured Indian brand benchmark products for rapid UI testing."""
+    """Return pre-configured Indian brand benchmark chocolate products for rapid UI testing."""
     benchmarks = []
     for code, prod in BarcodeService.LOCAL_INDIAN_PRODUCTS.items():
         data = NutrientData(
